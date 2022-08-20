@@ -2,12 +2,16 @@ import os, errno
 import pyaudio
 import spl_lib as spl
 from scipy.signal import lfilter
-import numpy
+import numpy as np
 import datetime
-from pixel_ring import pixel_ring
 from gpiozero import LED
 import time
 import csv
+import sys
+
+sys.path.insert(1, '../pixel_ring')
+from pixel_ring import pixel_ring
+
 
 ''' The following is similar to a basic CD quality
    When CHUNK size is 4096 it routinely throws an IOError.
@@ -92,13 +96,13 @@ def listen(old=0, error_count=0):
                 print(" (%d) Error recording: %s" % (error_count, e))
             else:
                 
-                ## Int16 is a numpy data type which is Integer (-32768 to 32767)
+                ## Int16 is a np data type which is Integer (-32768 to 32767)
                 ## If you put Int8 or Int32, the result numbers will be ridiculous
-                decoded_block = numpy.fromstring(block, 'Int16')
+                decoded_block = np.fromstring(block, np.int16)
                 
                 ## This is where you apply A-weighted filter
                 y = lfilter(NUMERATOR, DENOMINATOR, decoded_block)
-                new = 20 * numpy.log10(spl.rms_flat(y))
+                new = 20 * np.log10(spl.rms_flat(y))
 
                 ## Store the value
                 writer.writerow([datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), new])
