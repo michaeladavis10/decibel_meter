@@ -1,3 +1,9 @@
+# MAC
+.DS_Store
+
+# VENV
+sound/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
