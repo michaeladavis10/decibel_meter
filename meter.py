@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 import os, errno
 import pyaudio
 import spl_lib as spl
@@ -114,6 +113,7 @@ def listen(old=0, error_count=0):
         # stream.stop()
         stream.close()
         pa.terminate()
+        pixel_ring.think()
         csv_file.close()
 
     return warnings, infractions
