@@ -13,7 +13,6 @@ sys.path.insert(1, "../pixel_ring")
 from pixel_ring import pixel_ring
 
 sys.path.insert(1, "../rasp_pi_web_server")
-from rasp_pi_web_server import app
 from app import socketio
 
 
@@ -104,7 +103,7 @@ def listen(old=0, error_count=0):
 
             try:
                 ## read() returns string. You need to decode it into an array later.
-                block = stream.read(CHUNK)
+                block = stream.read(CHUNK, exception_on_overflow = False)
             except KeyboardInterrupt:
                 break
             except IOError as e:
