@@ -1,13 +1,12 @@
 import os
+import sys
+import datetime
+import csv
+import numpy as np
 import pyaudio
 import spl_lib as spl
 from scipy.signal import lfilter
-import numpy as np
-import datetime
 from gpiozero import LED
-import time
-import csv
-import sys
 
 sys.path.insert(1, "../pixel_ring")
 from pixel_ring import pixel_ring
@@ -24,6 +23,7 @@ from pixel_ring import pixel_ring
 # My init
 serious_value = 75  # decibels
 annoying_value = 65  # decibels
+print_delta = 10 # decibels
 
 # Respeaker stuff
 CHUNK = 1024
@@ -46,16 +46,19 @@ def get_filename(this_date):
         this_date.strftime("%Y"),
         this_date.strftime("%Y%m%d") + ".csv",
     )
-    if ~os.path.exists(filename):
+
+    if os.path.exists(filename):
+        pass
+    else:
         f = open(filename, "x")
     return filename
 
 
-def control_led(decibel, serious_range=serious_value, annoying_range=annoying_value):
-    if decibel > serious_range:
+def control_led(decibel_value, serious_range=serious_value, annoying_range=annoying_value):
+    if decibel_value > serious_range:
         pixel_ring.set_brightness(100)
         pixel_ring.set_color(r=255)
-    elif decibel > annoying_range:
+    elif decibel_value > annoying_range:
         pixel_ring.set_brightness(5)
         pixel_ring.set_color(g=255)
     else:
@@ -85,7 +88,7 @@ def send_to_redis_queue(decibel_value):
     return None
 
 
-def listen_all_the_time(stream):
+def listen_all_the_time(stream, print_delta=print_delta):
     error_count = 0
     old = 0
     now_time = datetime.datetime.now()
@@ -107,7 +110,7 @@ def listen_all_the_time(stream):
                 # Write to file for storage later
                 writer.writerow([now_time.strftime("%Y-%m-%d %H:%M:%S.%f"), new])
                 # Print out some info for debugging
-                if abs(old - new) > 3:
+                if abs(old - new) > print_delta:
                     old = new
                     print("A-weighted: {:+.2f} dB".format(new))
                 # Get new time
