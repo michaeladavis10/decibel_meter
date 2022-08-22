@@ -107,7 +107,7 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
                 # Write to file for storage later
                 writer.writerow([now_time.isoformat() + 'Z', new])
                 # Send to redis queue
-                socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)})
+                socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)}, broadcast = False)
                 # Calculate infractions
                 # Current rule is more thna 60 seconds
                 if (new > infrac_value) and (now_time > last_infrac + datetime.timedelta(seconds = 60)):
