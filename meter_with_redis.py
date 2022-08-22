@@ -11,6 +11,9 @@ from gpiozero import LED
 sys.path.insert(1, "../pixel_ring")
 from pixel_ring import pixel_ring
 
+sys.path.insert(1, "../rasp_pi_web_server")
+from app import socketio
+
 """ The following is similar to a basic CD quality
    When CHUNK size is 4096 it routinely throws an IOError.
    When it is set to 8192 it doesn't.
@@ -23,7 +26,8 @@ from pixel_ring import pixel_ring
 # My init
 serious_value = 75  # decibels
 annoying_value = 65  # decibels
-print_delta = 10 # decibels
+print_delta = 20 # decibels
+baseline_value = 40 # decibels
 
 # Respeaker stuff
 CHUNK = 1024
@@ -81,19 +85,16 @@ def listen_once(stream, error_count):
         y = lfilter(NUMERATOR, DENOMINATOR, decoded_block)
         new = 20 * np.log10(spl.rms_flat(y))
     return new, error_count
+   
 
-
-def send_to_redis_queue(decibel_value):
-    # socketio.emit("decibel data", {"data": decibel_value})
-    return None
-
-
-def listen_all_the_time(stream, print_delta=print_delta):
+def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_value):
     error_count = 0
     old = 0
     now_time = datetime.datetime.now()
     now_date = now_time.date()
     filename = get_filename(this_date=now_date)
+    infrac_count = 0
+    last_infrac = now_time
 
     with open(filename, "a") as csv_file:
         writer = csv.writer(csv_file)
@@ -103,16 +104,25 @@ def listen_all_the_time(stream, print_delta=print_delta):
             while now_time.date() == now_date:
                 # Get new value
                 new, error_count = listen_once(stream, error_count)
+                # Write to file for storage later
+                writer.writerow([now_time.isoformat() + 'Z', new])
+                # Send to redis queue
+                socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)})
+                # Calculate infractions
+                # Current rule is more thna 60 seconds
+                if (new > infrac_value) and (now_time > last_infrac + datetime.timedelta(seconds = 60)):
+                    infrac_count += 1
+                    socketio.emit("decibel infraction", {'time':now_time.isoformat() + 'Z', 'data':int(infrac_count)})
+                    last_infrac = now_time
+
                 # Flash the lights
                 control_led(decibel_value=new)
-                # Send to redis queue
-                send_to_redis_queue(decibel_value=new)
-                # Write to file for storage later
-                writer.writerow([now_time.strftime("%Y-%m-%d %H:%M:%S.%f"), new])
+
                 # Print out some info for debugging
-                if abs(old - new) > print_delta:
-                    old = new
-                    print("A-weighted: {:+.2f} dB".format(new))
+                # if abs(old - new) > print_delta:
+                #     old = new
+                #     print("A-weighted: {:+.2f} dB".format(new))
+
                 # Get new time
                 now_time = datetime.datetime.now()
         except KeyboardInterrupt as e:
