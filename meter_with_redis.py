@@ -25,9 +25,9 @@ from app import socketio
 
 # My init
 serious_value = 75  # decibels
-annoying_value = 65  # decibels
+annoying_value = 60  # decibels
 print_delta = 20 # decibels
-baseline_value = 40 # decibels
+baseline_value = 34 # decibels
 infrac_grace_period = 60 # seconds
 
 # Respeaker stuff
@@ -96,10 +96,9 @@ def control_led(decibel_value, serious_range=serious_value, annoying_range=annoy
         pixel_ring.set_color(r=255)
     elif decibel_value > annoying_range:
         pixel_ring.set_brightness(5)
-        pixel_ring.set_color(g=255)
+        pixel_ring.set_color(r=255, g=255)
     else:
-        pixel_ring.set_brightness(0)
-        # pixel_ring.off()
+        pixel_ring.set_color(g = 0)
     return None
 
 
@@ -120,7 +119,7 @@ def listen_once(stream, error_count):
     return new, error_count
    
 
-def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_value, infrac_grace_period = infrac_grace_period):
+def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_value, infrac_grace_period = infrac_grace_period, send_threshold = annoying_value):
     error_count = 0
     old = 0
     now_time = datetime.datetime.now()
@@ -131,6 +130,9 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
     infrac_count = infrac_dict['infrac_count'] 
     last_infrac = infrac_dict['last_infrac_time']
     now_date = infrac_dict['filedate']
+
+    # Send this to the server immediately to update the chart
+    socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat() + 'Z', 'infrac_count':int(infrac_count)}, namespace = '/test')
     
     with open(infrac_dict['filename'], "a") as csv_file:
         writer = csv.writer(csv_file)
@@ -143,21 +145,20 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
                 # Write to file for storage later
                 writer.writerow([now_time.isoformat(), new])
                 # Send to redis queue
-                socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)}, namespace = '/test', room = '/decibel')
+                if new >= send_threshold:
+                    socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)}, namespace = '/test')
+                
                 # Calculate infractions
                 # Current rule is more than 60 seconds
                 if (new > infrac_value) and (now_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
                     infrac_count += 1
                     last_infrac = now_time
-                    socketio.emit("decibel infraction", {'time':now_time.isoformat() + 'Z', 'data':int(infrac_count)}, namespace = '/test', room = '/decibel')
-                    
-                    # Flash the lights
-                    pixel_ring.show([100])
+                    socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat() + 'Z', 'infrac_count':int(infrac_count)}, namespace = '/test')
 
                 # Flash the lights
-                # control_led(decibel_value=new)
+                control_led(decibel_value=int(new))
 
-                # Print out some info for debugging
+                # Print out some info for debugging and just to show it's doing something
                 # if abs(old - new) > print_delta:
                 #     old = new
                 #     print("A-weighted: {:+.2f} dB".format(new))
@@ -195,5 +196,4 @@ if __name__ == "__main__":
     audio_stream.stop_stream()
     audio_stream.close()
     pa.terminate()
-    pixel_ring.think()
     power.off()
