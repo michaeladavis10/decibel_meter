@@ -1,0 +1,34 @@
+## For the Decibel Service on Raspberry pi
+
+## Taken from here: https://www.tomshardware.com/how-to/run-long-running-scripts-raspberry-pi
+
+sudo nano /etc/systemd/system/decibelmeter.service
+sudo systemctl daemon-reload
+sudo systemctl start decibelmeter
+sudo systemctl status decibelmeter
+sudo systemctl stop decibelmeter
+sudo systemctl enable decibelmeter
+
+## Important to have full path for python files
+## Have Unit and Service separated
+## Important to make sure to use virtual env pythons
+
+## In this one, since it relies on the other modules in import, we have to set the working directory
+
+[Unit]
+Description=Decibel Meter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=pi
+Restart=always
+RestartSec=1
+WorkingDirectory=/home/pi/dev/decibel_meter
+ExecStart=/home/pi/dev/decibel_meter/sound/bin/python /home/pi/dev/decibel_meter/meter_with_redis.py
+
+[Install]
+WantedBy=multi-user.target
+
+## Then to watch logs: journalctl -fu decibelmeter.service

@@ -150,10 +150,11 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
                 
                 # Calculate infractions
                 # Current rule is more than 60 seconds
-                if (new > infrac_value) and (now_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
-                    infrac_count += 1
-                    last_infrac = now_time
-                    socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat() + 'Z', 'infrac_count':int(infrac_count)}, namespace = '/test')
+                if (new > infrac_value):
+                    if (last_infrac is None) or (now_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
+                        infrac_count += 1
+                        last_infrac = now_time
+                        socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat() + 'Z', 'infrac_count':int(infrac_count)}, namespace = '/test')
 
                 # Flash the lights
                 control_led(decibel_value=int(new))
