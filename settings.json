@@ -1,0 +1,8 @@
+{
+    "infraction_level": 75,
+    "warning_level": 60,
+    "send_threshold": 60,
+    "print_delta": 20,
+    "baseline_level": 34,
+    "infrac_grace_period": 60
+}

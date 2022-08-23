@@ -7,6 +7,13 @@ import pyaudio
 import spl_lib as spl
 from scipy.signal import lfilter
 from gpiozero import LED
+import time
+import json
+
+with open('settings.json', 'r') as f:
+    config = json.load(f)
+
+import read_noise_csvs as rnc
 
 sys.path.insert(1, "../pixel_ring")
 from pixel_ring import pixel_ring
@@ -23,13 +30,6 @@ from app import socketio
    math.pow(2, 12) => RATE / CHUNK = 100ms = 0.1 sec
 """
 
-# My init
-serious_value = 75  # decibels
-annoying_value = 60  # decibels
-print_delta = 20 # decibels
-baseline_value = 34 # decibels
-infrac_grace_period = 60 # seconds
-
 # Respeaker stuff
 CHUNK = 1024
 RESPEAKER_RATE = 16000
@@ -40,57 +40,8 @@ FORMAT = pyaudio.paInt16  # 16 bit
 CHANNEL = 2  # 1 means mono. If stereo, put 2
 NUMERATOR, DENOMINATOR = spl.A_weighting(RESPEAKER_RATE)
 
-# Directory & files stuff
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
-def get_filename(this_date):
-    filename = os.path.join(
-        BASE_DIR,
-        "data",
-        this_date.strftime("%Y"),
-        this_date.strftime("%Y%m%d") + ".csv",
-    )
-
-    if os.path.exists(filename):
-        pass
-    else:
-        f = open(filename, "x")
-    return filename
-
-
-def read_one_day(csv_date, infrac_value = serious_value, infrac_grace_period = infrac_grace_period):
-
-    filename = get_filename(csv_date)
-
-    # Initialize counters
-    infrac_count = 0
-    last_infrac = None
-
-    # Open file
-    # Go line by line until decibel over infrac_value
-    with open(filename, 'r') as read_obj:
-        csv_reader = csv.reader(read_obj)
-        for row in csv_reader:
-            if float(row[1]) >= infrac_value:
-                if row[0][-1] == 'Z':
-                    infrac_time = datetime.datetime.fromisoformat(row[0][:-1]) # there's a z for sending to JS
-                else:
-                    infrac_time = datetime.datetime.fromisoformat(row[0])
-                if (last_infrac is None) or (infrac_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
-                    infrac_count += 1
-                    last_infrac = infrac_time
-    
-    # Make pretty export (dictionary)
-    infrac_dict = dict()
-    infrac_dict['filedate'] = csv_date.date()
-    infrac_dict['filename'] = filename
-    infrac_dict['infrac_count'] = infrac_count
-    infrac_dict['last_infrac_time'] = last_infrac
-
-    return infrac_dict
-
-def control_led(decibel_value, serious_range=serious_value, annoying_range=annoying_value):
+def control_led(decibel_value, serious_range=config['infraction_level'], annoying_range=config['warning_level']):
     if decibel_value > serious_range:
         pixel_ring.set_brightness(100)
         pixel_ring.set_color(r=255)
@@ -119,21 +70,22 @@ def listen_once(stream, error_count):
     return new, error_count
    
 
-def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_value, infrac_grace_period = infrac_grace_period, send_threshold = annoying_value):
+def listen_all_the_time(stream, 
+                            print_delta=config['print_delta'], 
+                            infrac_value = config['infraction_level'], 
+                            infrac_grace_period = config['infrac_grace_period'], 
+                            send_threshold = config['send_threshold']):
     error_count = 0
     old = 0
     now_time = datetime.datetime.now()
     
     # Read previous history
-    infrac_dict = read_one_day(now_time)
-    print(infrac_dict)
-    infrac_count = infrac_dict['infrac_count'] 
-    last_infrac = infrac_dict['last_infrac_time']
+    infrac_dict = rnc.read_one_day(csv_date = now_time, infrac_value = infrac_value, infrac_grace_period = infrac_grace_period)
     now_date = infrac_dict['filedate']
+    last_infrac = infrac_dict['last_infrac_time']
+    infrac_count = infrac_dict['infrac_count']
 
-    # Send this to the server immediately to update the chart
-    socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat() + 'Z', 'infrac_count':int(infrac_count)}, namespace = '/test')
-    
+
     with open(infrac_dict['filename'], "a") as csv_file:
         writer = csv.writer(csv_file)
 
@@ -146,7 +98,7 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
                 writer.writerow([now_time.isoformat(), new])
                 # Send to redis queue
                 if new >= send_threshold:
-                    socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)}, namespace = '/test')
+                    socketio.emit("decibel data", {'time':now_time.isoformat(),'data':int(new)}, namespace = '/test')
                 
                 # Calculate infractions
                 # Current rule is more than 60 seconds
@@ -154,7 +106,7 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
                     if (last_infrac is None) or (now_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
                         infrac_count += 1
                         last_infrac = now_time
-                        socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat() + 'Z', 'infrac_count':int(infrac_count)}, namespace = '/test')
+                        socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat(), 'infrac_count':int(infrac_count)}, namespace = '/test')
 
                 # Flash the lights
                 control_led(decibel_value=int(new))
@@ -177,6 +129,9 @@ if __name__ == "__main__":
     # Turn on LEDs
     power = LED(5)
     power.on()
+    pixel_ring.wakeup()
+    time.sleep(2)
+    pixel_ring.off()
 
     """
     Listen to mic
@@ -197,4 +152,7 @@ if __name__ == "__main__":
     audio_stream.stop_stream()
     audio_stream.close()
     pa.terminate()
+    pixel_ring.think()
+    time.sleep(2)
+    pixel_ring.off()
     power.off()
