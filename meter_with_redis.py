@@ -28,6 +28,7 @@ serious_value = 75  # decibels
 annoying_value = 65  # decibels
 print_delta = 20 # decibels
 baseline_value = 40 # decibels
+infrac_grace_period = 60 # seconds
 
 # Respeaker stuff
 CHUNK = 1024
@@ -58,6 +59,37 @@ def get_filename(this_date):
     return filename
 
 
+def read_one_day(csv_date, infrac_value = serious_value, infrac_grace_period = infrac_grace_period):
+
+    filename = get_filename(csv_date)
+
+    # Initialize counters
+    infrac_count = 0
+    last_infrac = None
+
+    # Open file
+    # Go line by line until decibel over infrac_value
+    with open(filename, 'r') as read_obj:
+        csv_reader = csv.reader(read_obj)
+        for row in csv_reader:
+            if float(row[1]) >= infrac_value:
+                if row[0][-1] == 'Z':
+                    infrac_time = datetime.datetime.fromisoformat(row[0][:-1]) # there's a z for sending to JS
+                else:
+                    infrac_time = datetime.datetime.fromisoformat(row[0])
+                if (last_infrac is None) or (infrac_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
+                    infrac_count += 1
+                    last_infrac = infrac_time
+    
+    # Make pretty export (dictionary)
+    infrac_dict = dict()
+    infrac_dict['filedate'] = csv_date.date()
+    infrac_dict['filename'] = filename
+    infrac_dict['infrac_count'] = infrac_count
+    infrac_dict['last_infrac_time'] = last_infrac
+
+    return infrac_dict
+
 def control_led(decibel_value, serious_range=serious_value, annoying_range=annoying_value):
     if decibel_value > serious_range:
         pixel_ring.set_brightness(100)
@@ -66,7 +98,8 @@ def control_led(decibel_value, serious_range=serious_value, annoying_range=annoy
         pixel_ring.set_brightness(5)
         pixel_ring.set_color(g=255)
     else:
-        pixel_ring.off()
+        pixel_ring.set_brightness(0)
+        # pixel_ring.off()
     return None
 
 
@@ -87,16 +120,19 @@ def listen_once(stream, error_count):
     return new, error_count
    
 
-def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_value):
+def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_value, infrac_grace_period = infrac_grace_period):
     error_count = 0
     old = 0
     now_time = datetime.datetime.now()
-    now_date = now_time.date()
-    filename = get_filename(this_date=now_date)
-    infrac_count = 0
-    last_infrac = now_time
-
-    with open(filename, "a") as csv_file:
+    
+    # Read previous history
+    infrac_dict = read_one_day(now_time)
+    print(infrac_dict)
+    infrac_count = infrac_dict['infrac_count'] 
+    last_infrac = infrac_dict['last_infrac_time']
+    now_date = infrac_dict['filedate']
+    
+    with open(infrac_dict['filename'], "a") as csv_file:
         writer = csv.writer(csv_file)
 
         # Using a try/except here for keyboard interrupt if necessary (happens!)
@@ -105,18 +141,21 @@ def listen_all_the_time(stream, print_delta=print_delta, infrac_value = serious_
                 # Get new value
                 new, error_count = listen_once(stream, error_count)
                 # Write to file for storage later
-                writer.writerow([now_time.isoformat() + 'Z', new])
+                writer.writerow([now_time.isoformat(), new])
                 # Send to redis queue
-                socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)}, broadcast = False)
+                socketio.emit("decibel data", {'time':now_time.isoformat() + 'Z','data':int(new)}, namespace = '/test', room = '/decibel')
                 # Calculate infractions
-                # Current rule is more thna 60 seconds
-                if (new > infrac_value) and (now_time > last_infrac + datetime.timedelta(seconds = 60)):
+                # Current rule is more than 60 seconds
+                if (new > infrac_value) and (now_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
                     infrac_count += 1
-                    socketio.emit("decibel infraction", {'time':now_time.isoformat() + 'Z', 'data':int(infrac_count)})
                     last_infrac = now_time
+                    socketio.emit("decibel infraction", {'time':now_time.isoformat() + 'Z', 'data':int(infrac_count)}, namespace = '/test', room = '/decibel')
+                    
+                    # Flash the lights
+                    pixel_ring.show([100])
 
                 # Flash the lights
-                control_led(decibel_value=new)
+                # control_led(decibel_value=new)
 
                 # Print out some info for debugging
                 # if abs(old - new) > print_delta:
