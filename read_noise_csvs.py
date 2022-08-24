@@ -33,19 +33,25 @@ def read_one_day(csv_date, infrac_value = config['infraction_level'], infrac_gra
     infrac_count = 0
     last_infrac = None
 
-    # Open file
     # Go line by line until decibel over infrac_value
     with open(filename, 'r') as read_obj:
-        csv_reader = csv.reader(read_obj)
+        csv_reader = csv.reader(x.replace('\0','') for x in read_obj)
         for row in csv_reader:
-            if float(row[1]) >= infrac_value:
-                if row[0][-1] == 'Z':
-                    infrac_time = datetime.datetime.fromisoformat(row[0][:-1]) # there's a z for sending to JS
-                else:
-                    infrac_time = datetime.datetime.fromisoformat(row[0])
-                if (last_infrac is None) or (infrac_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
-                    infrac_count += 1
-                    last_infrac = infrac_time
+            try:
+                if float(row[1]) >= infrac_value:
+                    if row[0][-1] == 'Z':
+                        infrac_time = datetime.datetime.fromisoformat(row[0][:-1]) # there's a z for sending to JS
+                    else:
+                        infrac_time = datetime.datetime.fromisoformat(row[0])
+                    if (last_infrac is None) or (infrac_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
+                        infrac_count += 1
+                        last_infrac = infrac_time
+            except Exception as e:
+                continue
+                # sometimes there's a nul bite on power failure
+
+
+
     
     # Make pretty export (dictionary)
     infrac_dict = dict()

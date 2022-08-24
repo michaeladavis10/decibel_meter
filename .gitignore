@@ -4,6 +4,9 @@
 # VENV
 sound/
 
+# Project CSVs
+data/2022/*.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
