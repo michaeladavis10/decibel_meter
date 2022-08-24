@@ -82,9 +82,8 @@ def listen_all_the_time(stream,
     # Read previous history
     infrac_dict = rnc.read_one_day(csv_date = now_time, infrac_value = infrac_value, infrac_grace_period = infrac_grace_period)
     now_date = infrac_dict['filedate']
-    last_infrac = infrac_dict['last_infrac_time']
+    last_infrac = infrac_dict['last_infrac']
     infrac_count = infrac_dict['infrac_count']
-
 
     with open(infrac_dict['filename'], "a") as csv_file:
         writer = csv.writer(csv_file)
@@ -98,7 +97,7 @@ def listen_all_the_time(stream,
                 writer.writerow([now_time.isoformat(), new])
                 # Send to redis queue
                 if new >= send_threshold:
-                    socketio.emit("decibel data", {'time':now_time.isoformat(),'data':int(new)}, namespace = '/test')
+                    socketio.emit("decibel_data", {'time':now_time.isoformat(),'data':int(new)}, namespace = '/test')
                 
                 # Calculate infractions
                 # Current rule is more than 60 seconds
@@ -106,7 +105,7 @@ def listen_all_the_time(stream,
                     if (last_infrac is None) or (now_time > last_infrac + datetime.timedelta(seconds = infrac_grace_period)):
                         infrac_count += 1
                         last_infrac = now_time
-                        socketio.emit("decibel infraction", {'last_infrac':now_time.isoformat(), 'infrac_count':int(infrac_count)}, namespace = '/test')
+                        socketio.emit("decibel_infraction", {'last_infrac':now_time.isoformat(), 'infrac_count':int(infrac_count)}, namespace = '/test', broadcast=True)
 
                 # Flash the lights
                 control_led(decibel_value=int(new))

@@ -52,10 +52,27 @@ def read_one_day(csv_date, infrac_value = config['infraction_level'], infrac_gra
     infrac_dict['filedate'] = csv_date.date()
     infrac_dict['filename'] = filename
     infrac_dict['infrac_count'] = infrac_count
-    infrac_dict['last_infrac_time'] = last_infrac
+    infrac_dict['last_infrac'] = last_infrac
 
     return infrac_dict
 
+
+def get_past_x_days(csv_date, n_days):
+
+    # This is really just going to Javascript charts, so they take in 
+    # x: [], y = []
+    # And we want it in chronological order
+    results = {'x':[], 'y':[]}
+    for n in range(-n_days + 1, 1, 1):
+        this_date = csv_date + datetime.timedelta(days = n)
+        this_infrac_dict = read_one_day(this_date)
+        results['x'].append(this_infrac_dict['filedate'].isoformat())
+        results['y'].append(this_infrac_dict['infrac_count'])
+
+    return results
+
 if __name__ == "__main__":
-    infrac_dict = read_one_day(datetime.datetime.now())
-    print(infrac_dict)
+    # infrac_dict = read_one_day(datetime.datetime.now())
+    # print(infrac_dict)
+    p7d = get_past_x_days(datetime.datetime.now(), n_days = 7)
+    print(p7d)
